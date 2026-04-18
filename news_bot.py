@@ -106,8 +106,8 @@ def build_slack_message(categorized, all_articles):
             continue
 
         blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*{category}*"},
+            "type": "header",
+            "text": {"type": "plain_text", "text": category},
         })
 
         for article in articles:
