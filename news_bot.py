@@ -1,49 +1,55 @@
 import os
 import requests
+import feedparser
 from datetime import datetime, timezone, timedelta
 from deep_translator import GoogleTranslator
 
-NEWS_API_KEY = os.environ["NEWS_API_KEY"]
 SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 
 KST = timezone(timedelta(hours=9))
 today = datetime.now(KST).strftime("%Y-%m-%d")
 
 CATEGORIES = {
-    "⚔️ 군사 작전·공격": {
-        "q": "(Iran OR Israel) AND (US OR America) AND (airstrike OR missile OR attack OR bomb OR military operation)",
-        "keywords": ["strike", "attack", "missile", "bomb", "military", "airstrike", "operation"],
-    },
-    "💀 피해 현황": {
-        "q": "(Iran OR Iraq OR Syria OR Yemen OR Lebanon) AND (casualties OR killed OR wounded OR civilian OR damage)",
-        "keywords": ["casualt", "killed", "dead", "wounded", "civilian", "victim", "damage"],
-    },
-    "🇰🇼🇦🇪 쿠웨이트·UAE 동향": {
-        "q": "(Kuwait OR UAE OR Emirates) AND (Iran OR US OR military OR evacuation OR alert)",
-        "keywords": ["kuwait", "uae", "emirates", "dubai", "abu dhabi"],
-    },
-    "🌍 주변국 반응": {
-        "q": "(Iraq OR Syria OR Yemen OR Lebanon OR Saudi Arabia OR Jordan) AND (Iran OR US OR Israel) AND (war OR conflict OR response)",
-        "keywords": ["iraq", "syria", "yemen", "lebanon", "saudi", "jordan"],
-    },
-    "🕊️ 외교·협상": {
-        "q": "(Iran OR Israel) AND (US OR America) AND (ceasefire OR negotiation OR diplomacy OR sanction OR deal OR talks)",
-        "keywords": ["ceasefire", "negotiat", "diplomac", "sanction", "deal", "talks", "peace"],
-    },
+    "⚔️ 군사 작전·공격": [
+        "Iran US airstrike missile attack",
+        "Iran Israel military strike bomb",
+    ],
+    "💀 피해 현황": [
+        "Iran Iraq Syria casualties killed wounded civilian",
+        "Yemen Lebanon missile casualties damage",
+    ],
+    "🇰🇼🇦🇪 쿠웨이트·UAE 동향": [
+        "Kuwait Iran US military alert",
+        "UAE Emirates Iran war evacuation",
+    ],
+    "🌍 주변국 반응": [
+        "Iraq Syria Saudi Arabia Iran US conflict",
+        "Jordan Lebanon Yemen Iran war response",
+    ],
+    "🕊️ 외교·협상": [
+        "Iran US ceasefire negotiation diplomacy",
+        "Iran Israel peace talks deal sanction",
+    ],
 }
 
-def fetch_category(query):
-    url = "https://newsapi.org/v2/everything"
-    params = {
-        "q": query,
-        "language": "en",
-        "sortBy": "publishedAt",
-        "pageSize": 5,
-        "apiKey": NEWS_API_KEY,
-    }
-    res = requests.get(url, params=params)
-    res.raise_for_status()
-    return res.json().get("articles", [])
+def fetch_rss(query):
+    url = f"https://news.google.com/rss/search?q={requests.utils.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+    feed = feedparser.parse(url)
+    articles = []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    for entry in feed.entries[:10]:
+        published = None
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+        if published and published < cutoff:
+            continue
+        articles.append({
+            "title": entry.get("title", ""),
+            "description": entry.get("summary", ""),
+            "url": entry.get("link", ""),
+            "source": entry.get("source", {}).get("title", "Google News"),
+        })
+    return articles[:3]
 
 def translate(text):
     if not text:
@@ -104,10 +110,10 @@ def build_slack_message(categorized, all_articles):
             "text": {"type": "mrkdwn", "text": f"*{category}*"},
         })
 
-        for article in articles[:3]:
+        for article in articles:
             title_ko = translate(article.get("title", ""))
             desc_ko = translate(article.get("description", ""))
-            source = article.get("source", {}).get("name", "알 수 없음")
+            source = article.get("source", "Google News")
             url = article.get("url", "")
 
             blocks.append({
@@ -149,10 +155,18 @@ if __name__ == "__main__":
     categorized = {}
     all_articles = []
 
-    for category, config in CATEGORIES.items():
-        articles = fetch_category(config["q"])
-        categorized[category] = articles
-        all_articles.extend(articles)
+    for category, queries in CATEGORIES.items():
+        articles = []
+        for q in queries:
+            articles.extend(fetch_rss(q))
+        seen = set()
+        deduped = []
+        for a in articles:
+            if a["title"] not in seen:
+                seen.add(a["title"])
+                deduped.append(a)
+        categorized[category] = deduped[:3]
+        all_articles.extend(deduped[:3])
 
     if not all_articles:
         print("뉴스 없음")
