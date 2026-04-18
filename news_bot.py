@@ -10,25 +10,25 @@ KST = timezone(timedelta(hours=9))
 today = datetime.now(KST).strftime("%Y-%m-%d")
 
 CATEGORIES = {
-    "⚔️ 군사 작전·공격": [
-        "Iran US airstrike missile attack",
-        "Iran Israel military strike bomb",
+    "1️⃣ 미국 - 이란 상황": [
+        "Iran US military attack strike war",
+        "Iran America sanctions nuclear missile",
     ],
-    "💀 피해 현황": [
-        "Iran Iraq Syria casualties killed wounded civilian",
-        "Yemen Lebanon missile casualties damage",
+    "2️⃣ 이스라엘 - 이란 상황": [
+        "Israel Iran airstrike missile attack",
+        "Israel Iran military operation war",
     ],
-    "🇰🇼🇦🇪 쿠웨이트·UAE 동향": [
-        "Kuwait Iran US military alert",
-        "UAE Emirates Iran war evacuation",
+    "3️⃣ 주변국 피해 - UAE": [
+        "UAE Emirates Iran US war attack damage",
+        "Dubai Abu Dhabi Iran conflict alert evacuation",
     ],
-    "🌍 주변국 반응": [
-        "Iraq Syria Saudi Arabia Iran US conflict",
-        "Jordan Lebanon Yemen Iran war response",
+    "4️⃣ 주변국 피해 - 쿠웨이트": [
+        "Kuwait Iran US war attack damage",
+        "Kuwait military alert evacuation conflict",
     ],
-    "🕊️ 외교·협상": [
-        "Iran US ceasefire negotiation diplomacy",
-        "Iran Israel peace talks deal sanction",
+    "5️⃣ 주변국 피해 - 이라크": [
+        "Iraq Iran US attack casualties damage",
+        "Iraq war strike civilian killed wounded",
     ],
 }
 
@@ -62,11 +62,31 @@ def translate(text):
 def analyze_situation(all_articles):
     titles = " ".join(a.get("title", "") for a in all_articles).lower()
 
-    escalation_signals = ["airstrike", "missile launch", "nuclear", "mobilize", "invasion", "retaliation", "attack iran", "bomb"]
-    ceasefire_signals = ["ceasefire", "negotiation", "talks", "deal", "diplomacy", "withdraw", "de-escalat"]
+    escalation_signals = {
+        "airstrike": "공습 보도",
+        "missile launch": "미사일 발사",
+        "nuclear": "핵 관련 동향",
+        "mobilize": "군 동원",
+        "invasion": "침공",
+        "retaliation": "보복 작전",
+        "attack iran": "이란 공격",
+        "bomb": "폭격",
+    }
+    ceasefire_signals = {
+        "ceasefire": "휴전 논의",
+        "negotiation": "협상 진행",
+        "talks": "회담",
+        "deal": "합의 가능성",
+        "diplomacy": "외교 활동",
+        "withdraw": "철군 움직임",
+        "de-escalat": "긴장 완화",
+    }
 
-    esc_count = sum(1 for s in escalation_signals if s in titles)
-    ces_count = sum(1 for s in ceasefire_signals if s in titles)
+    esc_hits = [label for sig, label in escalation_signals.items() if sig in titles]
+    ces_hits = [label for sig, label in ceasefire_signals.items() if sig in titles]
+
+    esc_count = len(esc_hits)
+    ces_count = len(ces_hits)
 
     if esc_count >= 4:
         esc_level, esc_bar = "매우 높음 🔴🔴🔴🔴🔴", "▓▓▓▓▓"
@@ -88,10 +108,13 @@ def analyze_situation(all_articles):
     else:
         ces_level, ces_bar = "매우 낮음 🔴", "▓░░░░"
 
-    return esc_level, esc_bar, ces_level, ces_bar
+    esc_reason = "· " + "\n· ".join(esc_hits) if esc_hits else "· 확전 관련 키워드 감지 없음"
+    ces_reason = "· " + "\n· ".join(ces_hits) if ces_hits else "· 휴전 관련 키워드 감지 없음"
+
+    return esc_level, esc_bar, esc_reason, ces_level, ces_bar, ces_reason
 
 def build_slack_message(categorized, all_articles):
-    esc_level, esc_bar, ces_level, ces_bar = analyze_situation(all_articles)
+    esc_level, esc_bar, esc_reason, ces_level, ces_bar, ces_reason = analyze_situation(all_articles)
 
     blocks = [
         {
@@ -131,15 +154,20 @@ def build_slack_message(categorized, all_articles):
         blocks.append({"type": "divider"})
 
     blocks.append({
+        "type": "header",
+        "text": {"type": "plain_text", "text": "6️⃣ AI 분석 결과"},
+    })
+    blocks.append({
         "type": "section",
         "text": {
             "type": "mrkdwn",
             "text": (
-                f"*🤖 AI 상황 분석*\n\n"
                 f"*확전 가능성:* {esc_level}\n"
-                f"{esc_bar}\n\n"
+                f"{esc_bar}\n"
+                f"{esc_reason}\n\n"
                 f"*휴전 가능성:* {ces_level}\n"
-                f"{ces_bar}\n\n"
+                f"{ces_bar}\n"
+                f"{ces_reason}\n\n"
                 f"_※ 최근 24시간 뉴스 키워드 빈도 기반 자동 분석_"
             ),
         },
