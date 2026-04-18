@@ -33,15 +33,12 @@ CATEGORIES = {
 }
 
 def fetch_category(query):
-    from datetime import datetime, timezone, timedelta
-    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     url = "https://newsapi.org/v2/everything"
     params = {
         "q": query,
         "language": "en",
         "sortBy": "publishedAt",
         "pageSize": 5,
-        "from": since,
         "apiKey": NEWS_API_KEY,
     }
     res = requests.get(url, params=params)
